@@ -13,7 +13,20 @@ class SchemaCollector implements CollectorInterface
     public function collect(): array
     {
         $databases = $this->getNonSystemDatabases();
-        $dbList = implode("','", array_map([$this->pdo, 'quote'], $databases));
+
+        if ($databases === []) {
+            return [
+                'total_tables' => 0,
+                'innodb_tables' => 0,
+                'myisam_tables' => 0,
+                'fragmented_tables' => 0,
+                'total_index_size' => null,
+                'total_data_size' => null,
+                'databases' => [],
+            ];
+        }
+
+        $dbList = implode(',', array_map([$this->pdo, 'quote'], $databases));
 
         return [
             'total_tables' => $this->countTotalTables($dbList),
@@ -35,36 +48,31 @@ class SchemaCollector implements CollectorInterface
 
     private function countTotalTables(string $dbList): int
     {
-        if (empty($dbList)) return 0;
-        $stmt = $this->pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE table_schema IN ('{$dbList}') AND table_type = 'BASE TABLE'");
+        $stmt = $this->pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE table_schema IN ({$dbList}) AND table_type = 'BASE TABLE'");
         return (int) $stmt->fetch(PDO::FETCH_COLUMN);
     }
 
     private function countEngineTables(string $dbList, string $engine): int
     {
-        if (empty($dbList)) return 0;
-        $stmt = $this->pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE table_schema IN ('{$dbList}') AND engine = '{$engine}' AND table_type = 'BASE TABLE'");
+        $stmt = $this->pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE table_schema IN ({$dbList}) AND engine = '{$engine}' AND table_type = 'BASE TABLE'");
         return (int) $stmt->fetch(PDO::FETCH_COLUMN);
     }
 
     private function countFragmentedTables(string $dbList): int
     {
-        if (empty($dbList)) return 0;
-        $stmt = $this->pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE table_schema IN ('{$dbList}') AND Data_free > 0 AND table_type = 'BASE TABLE'");
+        $stmt = $this->pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE table_schema IN ({$dbList}) AND Data_free > 0 AND table_type = 'BASE TABLE'");
         return (int) $stmt->fetch(PDO::FETCH_COLUMN);
     }
 
     private function getIndexSize(string $dbList): ?int
     {
-        if (empty($dbList)) return null;
-        $stmt = $this->pdo->query("SELECT COALESCE(SUM(index_length), 0) FROM information_schema.TABLES WHERE table_schema IN ('{$dbList}')");
+        $stmt = $this->pdo->query("SELECT COALESCE(SUM(index_length), 0) FROM information_schema.TABLES WHERE table_schema IN ({$dbList})");
         return (int) $stmt->fetch(PDO::FETCH_COLUMN);
     }
 
     private function getDataSize(string $dbList): ?int
     {
-        if (empty($dbList)) return null;
-        $stmt = $this->pdo->query("SELECT COALESCE(SUM(data_length + index_length), 0) FROM information_schema.TABLES WHERE table_schema IN ('{$dbList}')");
+        $stmt = $this->pdo->query("SELECT COALESCE(SUM(data_length + index_length), 0) FROM information_schema.TABLES WHERE table_schema IN ({$dbList})");
         return (int) $stmt->fetch(PDO::FETCH_COLUMN);
     }
 }
