@@ -1,0 +1,117 @@
+#!/usr/bin/env php
+<?php
+
+require_once __DIR__ . '/../vendor/autoload.php';
+
+use MySQLTuner\Analyzer;
+use MySQLTuner\Report\ConsoleFormatter;
+use MySQLTuner\Report\JsonFormatter;
+use MySQLTuner\Rules\RuleSet;
+
+const EXIT_OK = 0;
+const EXIT_WARNINGS = 1;
+const EXIT_CRITICAL = 2;
+const EXIT_ERROR = 3;
+
+$shortOpts = 'u:p:h:P:d:';
+$longOpts = [
+    'user:', 'password:', 'host:', 'port:', 'socket:',
+    'help', 'version', 'json', 'no-color', 'rules:',
+];
+
+$options = getopt($shortOpts, $longOpts);
+
+if (isset($options['help'])) {
+    echo <<<HELP
+MySQL Tuner - MySQL/MariaDB performance analyzer v1.0.0
+
+Usage: mysql-tuner [options]
+
+Options:
+  -u, --user <name>       MySQL user (default: root)
+  -p, --password <pass>   MySQL password
+  -h, --host <host>       MySQL host (default: 127.0.0.1)
+  -P, --port <port>       MySQL port (default: 3306)
+  -d, --socket <socket>   MySQL socket path (overrides host/port)
+  --json                  Output as JSON
+  --no-color              Disable colored output
+  --rules <dir>           Custom rules directory
+  --version               Show version
+  --help                  Show this help
+
+Examples:
+  mysql-tuner -u root -p secret
+  mysql-tuner -u monitor -p pass -h db.example.com -P 3307
+  mysql-tuner -u root -p secret --json | jq .
+  mysql-tuner -d /var/run/mysqld/mysqld.sock
+
+HELP;
+    exit(EXIT_OK);
+}
+
+if (isset($options['version'])) {
+    echo "MySQL Tuner v1.0.0\n";
+    exit(EXIT_OK);
+}
+
+$user = $options['u'] ?? $options['user'] ?? 'root';
+$pass = $options['p'] ?? $options['password'] ?? '';
+$host = $options['h'] ?? $options['host'] ?? '127.0.0.1';
+$port = $options['P'] ?? $options['port'] ?? '3306';
+$socket = $options['d'] ?? $options['socket'] ?? null;
+$asJson = isset($options['json']);
+$noColor = isset($options['no-color']);
+$rulesDir = $options['rules'] ?? __DIR__ . '/../rules';
+
+if ($socket !== null) {
+    $dsn = "mysql:unix_socket={$socket};charset=utf8mb4";
+} else {
+    $dsn = "mysql:host={$host};port={$port};charset=utf8mb4";
+}
+
+try {
+    $pdo = new PDO($dsn, $user, $pass, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES => false,
+    ]);
+} catch (PDOException $e) {
+    fwrite(STDERR, "Error: Cannot connect to MySQL - {$e->getMessage()}\n");
+
+    if (str_contains($e->getMessage(), 'Access denied')) {
+        fwrite(STDERR, "Hint: Check credentials (user: {$user})\n");
+    } elseif (str_contains($e->getMessage(), 'Connection refused')) {
+        fwrite(STDERR, "Hint: Is MySQL running on {$host}:{$port}?\n");
+    } elseif (str_contains($e->getMessage(), 'ext-pdo')) {
+        fwrite(STDERR, "Hint: Install php-mysql extension\n");
+    }
+
+    exit(EXIT_ERROR);
+}
+
+$ruleSet = new RuleSet($rulesDir);
+$analyzer = new Analyzer($pdo, $ruleSet);
+
+try {
+    $report = $analyzer->analyze();
+} catch (PDOException $e) {
+    fwrite(STDERR, "Error during analysis: {$e->getMessage()}\n");
+    exit(EXIT_ERROR);
+}
+
+if ($asJson) {
+    $formatter = new JsonFormatter();
+    echo $formatter->format($report) . "\n";
+} else {
+    $formatter = new ConsoleFormatter(noColor: $noColor);
+    echo $formatter->format($report);
+}
+
+$criticalCount = $report->criticalCount();
+$warningCount = $report->warningCount();
+
+exit(match (true) {
+    $criticalCount > 0 => EXIT_CRITICAL,
+    $warningCount > 0 => EXIT_WARNINGS,
+    default => EXIT_OK,
+});

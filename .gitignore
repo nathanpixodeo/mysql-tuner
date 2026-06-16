@@ -1,0 +1,8 @@
+/vendor/
+/composer.lock
+/.phpunit.cache/
+/.phpstan-cache/
+/.php_cs.cache
+*.log
+.DS_Store
+Thumbs.db

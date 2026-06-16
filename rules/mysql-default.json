@@ -1,0 +1,285 @@
+{
+    "connection": [
+        {
+            "key": "Max_used_connections",
+            "type": "int",
+            "severity": "WARNING",
+            "summary": "Max_used_connections is high relative to max_connections",
+            "condition": "gt",
+            "threshold": 100,
+            "suggestion": "Increase max_connections or implement connection pooling (e.g. ProxySQL, HikariCP)"
+        },
+        {
+            "key": "Aborted_connects",
+            "type": "int",
+            "severity": "WARNING",
+            "summary": "High number of aborted connections",
+            "condition": "gt",
+            "threshold": 100,
+            "suggestion": "Check network stability, firewall rules, and connection timeouts"
+        },
+        {
+            "key": "Connection_errors_max_connections",
+            "type": "int",
+            "severity": "CRITICAL",
+            "summary": "Connection errors due to max_connections limit reached",
+            "condition": "gt",
+            "threshold": 0,
+            "suggestion": "Increase max_connections immediately"
+        },
+        {
+            "key": "Connection_errors_internal",
+            "type": "int",
+            "severity": "WARNING",
+            "summary": "Internal connection errors detected",
+            "condition": "gt",
+            "threshold": 0,
+            "suggestion": "Check MySQL error log for details"
+        }
+    ],
+    "innodb": [
+        {
+            "key": "Innodb_log_waits",
+            "type": "int",
+            "severity": "WARNING",
+            "summary": "InnoDB log waits detected — redo log may be too small",
+            "condition": "gt",
+            "threshold": 0,
+            "suggestion": "Increase innodb_log_file_size"
+        },
+        {
+            "key": "Innodb_row_lock_time_avg",
+            "type": "int",
+            "severity": "WARNING",
+            "summary": "High average InnoDB row lock time",
+            "condition": "gt",
+            "threshold": 2000,
+            "suggestion": "Review queries for long-running transactions or lock contention"
+        },
+        {
+            "key": "Innodb_row_lock_waits",
+            "type": "int",
+            "severity": "WARNING",
+            "summary": "InnoDB row lock waits detected",
+            "condition": "gt",
+            "threshold": 10,
+            "suggestion": "Check for lock contention in slow queries"
+        },
+        {
+            "key": "innodb_flush_log_at_trx_commit",
+            "type": "int",
+            "severity": "INFO",
+            "summary": "innodb_flush_log_at_trx_commit = 1 (full ACID compliance)",
+            "condition": "neq",
+            "threshold": 1,
+            "suggestion": "Set to 1 for full ACID compliance, or 2 for better performance with minor durability risk"
+        },
+        {
+            "key": "innodb_file_per_table",
+            "type": "string",
+            "severity": "INFO",
+            "summary": "innodb_file_per_table is not enabled",
+            "condition": "neq",
+            "threshold": "ON",
+            "suggestion": "Enable innodb_file_per_table for better space management"
+        },
+        {
+            "key": "Innodb_os_log_written",
+            "type": "int",
+            "severity": "INFO",
+            "summary": "InnoDB redo log written to disk",
+            "condition": "gt",
+            "threshold": 0,
+            "suggestion": "Monitor redo log size relative to innodb_log_file_size"
+        }
+    ],
+    "temporary": [
+        {
+            "key": "Created_tmp_disk_tables",
+            "type": "int",
+            "severity": "WARNING",
+            "summary": "High rate of temporary tables created on disk",
+            "condition": "gt",
+            "threshold": 100,
+            "suggestion": "Increase tmp_table_size and max_heap_table_size; review queries using ORDER BY / GROUP BY on large datasets"
+        },
+        {
+            "key": "Created_tmp_files",
+            "type": "int",
+            "severity": "WARNING",
+            "summary": "Temporary files created on disk",
+            "condition": "gt",
+            "threshold": 10,
+            "suggestion": "Check tmpdir disk space and increase temp table limits"
+        }
+    ],
+    "slow_queries": [
+        {
+            "key": "Slow_queries",
+            "type": "int",
+            "severity": "WARNING",
+            "summary": "Slow queries detected since startup",
+            "condition": "gt",
+            "threshold": 5,
+            "suggestion": "Enable slow_query_log and long_query_time=2; use pt-query-digest or mysqldumpslow to analyze"
+        },
+        {
+            "key": "long_query_time",
+            "type": "float",
+            "severity": "INFO",
+            "summary": "Long query time threshold",
+            "condition": "gt",
+            "threshold": 5,
+            "suggestion": "Consider lowering long_query_time to 2 seconds for better visibility"
+        }
+    ],
+    "table_cache": [
+        {
+            "key": "Opened_tables",
+            "type": "int",
+            "severity": "WARNING",
+            "summary": "High number of table opens — table cache may be too small",
+            "condition": "gt",
+            "threshold": 500,
+            "suggestion": "Increase table_open_cache"
+        },
+        {
+            "key": "Open_files",
+            "type": "int",
+            "severity": "WARNING",
+            "summary": "Open files is high",
+            "condition": "gt",
+            "threshold": 10000,
+            "suggestion": "Increase open_files_limit in MySQL config"
+        },
+        {
+            "key": "table_open_cache",
+            "type": "int",
+            "severity": "INFO",
+            "summary": "table_open_cache value",
+            "condition": "lt",
+            "threshold": 1000,
+            "suggestion": "Consider increasing table_open_cache if you have many tables in active use"
+        }
+    ],
+    "joins": [
+        {
+            "key": "Select_full_join",
+            "type": "int",
+            "severity": "WARNING",
+            "summary": "Queries performing full table scans (joins without indexes)",
+            "condition": "gt",
+            "threshold": 10,
+            "suggestion": "Add indexes on columns used in JOIN ON and WHERE clauses"
+        },
+        {
+            "key": "Select_range_check",
+            "type": "int",
+            "severity": "WARNING",
+            "summary": "Queries checking range without proper indexes",
+            "condition": "gt",
+            "threshold": 10,
+            "suggestion": "Review queries with range conditions and add suitable indexes"
+        },
+        {
+            "key": "Select_scan",
+            "type": "int",
+            "severity": "INFO",
+            "summary": "Full table scans detected",
+            "condition": "gt",
+            "threshold": 1000,
+            "suggestion": "Review queries without WHERE clauses or with non-indexed columns in WHERE"
+        }
+    ],
+    "sort": [
+        {
+            "key": "Sort_merge_passes",
+            "type": "int",
+            "severity": "WARNING",
+            "summary": "Sort merge passes detected — sort buffer may be too small",
+            "condition": "gt",
+            "threshold": 10,
+            "suggestion": "Increase sort_buffer_size"
+        },
+        {
+            "key": "Sort_rows",
+            "type": "int",
+            "severity": "INFO",
+            "summary": "Sort operations are happening",
+            "condition": "gt",
+            "threshold": 10000,
+            "suggestion": "Review queries with ORDER BY on large datasets; consider adding indexes that match the ORDER BY clause"
+        }
+    ],
+    "threads": [
+        {
+            "key": "Threads_created",
+            "type": "int",
+            "severity": "WARNING",
+            "summary": "High thread creation rate",
+            "condition": "gt",
+            "threshold": 100,
+            "suggestion": "Increase thread_cache_size to avoid connection creation overhead"
+        },
+        {
+            "key": "thread_cache_size",
+            "type": "int",
+            "severity": "INFO",
+            "summary": "Thread cache size",
+            "condition": "lt",
+            "threshold": 8,
+            "suggestion": "Increase thread_cache_size to at least 8 for better connection handling"
+        }
+    ],
+    "myisam": [
+        {
+            "key": "key_buffer_size",
+            "type": "int",
+            "severity": "INFO",
+            "summary": "MyISAM key buffer size",
+            "condition": "lt",
+            "threshold": 16777216,
+            "suggestion": "Increase key_buffer_size if MyISAM tables are in use"
+        }
+    ],
+    "binlog": [
+        {
+            "key": "log_bin",
+            "type": "string",
+            "severity": "INFO",
+            "summary": "Binary logging is disabled",
+            "condition": "neq",
+            "threshold": "ON",
+            "suggestion": "Enable binary logging for point-in-time recovery if not using replication"
+        },
+        {
+            "key": "binlog_format",
+            "type": "string",
+            "severity": "INFO",
+            "summary": "Binary log format",
+            "condition": "neq",
+            "threshold": "ROW",
+            "suggestion": "Use binlog_format=ROW for consistent replication"
+        },
+        {
+            "key": "expire_logs_days",
+            "type": "int",
+            "severity": "INFO",
+            "summary": "Binary log expiration period",
+            "condition": "lt",
+            "threshold": 7,
+            "suggestion": "Set expire_logs_days to at least 7 for safety"
+        }
+    ],
+    "performance_schema": [
+        {
+            "key": "performance_schema",
+            "type": "string",
+            "severity": "INFO",
+            "summary": "Performance schema is disabled",
+            "condition": "neq",
+            "threshold": "ON",
+            "suggestion": "Enable performance_schema for detailed performance insights"
+        }
+    ]
+}

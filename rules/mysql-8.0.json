@@ -1,0 +1,91 @@
+{
+    "connection": [
+        {
+            "key": "Max_used_connections",
+            "type": "int",
+            "severity": "WARNING",
+            "summary": "Max_used_connections is high relative to max_connections",
+            "condition": "gt",
+            "threshold": 100,
+            "suggestion": "Increase max_connections or implement connection pooling"
+        }
+    ],
+    "query_cache": [
+        {
+            "key": "query_cache_type",
+            "type": "string",
+            "severity": "INFO",
+            "summary": "Query cache is deprecated in MySQL 8.0 and removed in 8.3+",
+            "condition": "neq",
+            "threshold": "OFF",
+            "suggestion": "Set query_cache_type = OFF and rely on application-level caching (Redis, Memcached)"
+        },
+        {
+            "key": "query_cache_size",
+            "type": "int",
+            "severity": "INFO",
+            "summary": "Query cache is still allocated despite being deprecated",
+            "condition": "gt",
+            "threshold": 0,
+            "suggestion": "Set query_cache_size = 0 to reclaim memory"
+        }
+    ],
+    "innodb": [
+        {
+            "key": "innodb_buffer_pool_size",
+            "type": "int",
+            "severity": "WARNING",
+            "summary": "InnoDB buffer pool size may be too small for modern workloads",
+            "condition": "lt",
+            "threshold": 1073741824,
+            "suggestion": "Set innodb_buffer_pool_size to at least 1GB or 70% of available RAM"
+        },
+        {
+            "key": "innodb_log_file_size",
+            "type": "int",
+            "severity": "INFO",
+            "summary": "InnoDB redo log size is small",
+            "condition": "lt",
+            "threshold": 536870912,
+            "suggestion": "Set innodb_log_file_size to at least 512MB for write-heavy workloads"
+        },
+        {
+            "key": "innodb_flush_method",
+            "type": "string",
+            "severity": "INFO",
+            "summary": "InnoDB flush method may need review",
+            "condition": "eq",
+            "threshold": "fsync",
+            "suggestion": "Consider O_DIRECT (Linux) or O_DIRECT_NO_FSYNC for better performance"
+        },
+        {
+            "key": "innodb_io_capacity",
+            "type": "int",
+            "severity": "INFO",
+            "summary": "InnoDB I/O capacity may be low for SSD storage",
+            "condition": "lt",
+            "threshold": 1000,
+            "suggestion": "Set innodb_io_capacity = 2000 and innodb_io_capacity_max = 4000 for SSD"
+        },
+        {
+            "key": "innodb_autoinc_lock_mode",
+            "type": "int",
+            "severity": "INFO",
+            "summary": "InnoDB auto-increment lock mode",
+            "condition": "neq",
+            "threshold": 2,
+            "suggestion": "Set innodb_autoinc_lock_mode = 2 for better concurrency with mixed-mode inserts"
+        }
+    ],
+    "replication": [
+        {
+            "key": "gtid_mode",
+            "type": "string",
+            "severity": "INFO",
+            "summary": "GTID mode is not enabled",
+            "condition": "neq",
+            "threshold": "ON",
+            "suggestion": "Enable gtid_mode = ON for easier replication management and failover"
+        }
+    ]
+}

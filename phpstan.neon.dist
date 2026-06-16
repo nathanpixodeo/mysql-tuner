@@ -1,0 +1,8 @@
+parameters:
+    level: 6
+    paths:
+        - src/
+        - bin/mysql-tuner
+    ignoreErrors:
+        - '#no value type specified in iterable type array#'
+        - '#always exists and is not nullable#'
