@@ -19,13 +19,13 @@ A PHP-based MySQL / MariaDB performance analyzer that collects server metrics an
 ### Via Composer (recommended)
 
 ```bash
-composer require nathan-com/mysql-tuner
+composer require nathanpixodeo/mysql-tuner
 ```
 
 ### Manual (standalone)
 
 ```bash
-git clone https://github.com/nathan-com/mysql-tuner.git
+git clone https://github.com/nathanpixodeo/mysql-tuner.git
 cd mysql-tuner
 composer install
 ```

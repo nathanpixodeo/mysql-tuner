@@ -1,5 +1,5 @@
 {
-    "name": "nathan-com/mysql-tuner",
+    "name": "nathanpixodeo/mysql-tuner",
     "description": "MySQL / MariaDB performance analyzer and tuner – collects metrics and gives tuning recommendations",
     "type": "library",
     "license": "MIT",
