@@ -10,26 +10,6 @@
             "suggestion": "Increase max_connections or implement connection pooling"
         }
     ],
-    "query_cache": [
-        {
-            "key": "query_cache_type",
-            "type": "string",
-            "severity": "INFO",
-            "summary": "Query cache is deprecated in MySQL 8.0 and removed in 8.3+",
-            "condition": "neq",
-            "threshold": "OFF",
-            "suggestion": "Set query_cache_type = OFF and rely on application-level caching (Redis, Memcached)"
-        },
-        {
-            "key": "query_cache_size",
-            "type": "int",
-            "severity": "INFO",
-            "summary": "Query cache is still allocated despite being deprecated",
-            "condition": "gt",
-            "threshold": 0,
-            "suggestion": "Set query_cache_size = 0 to reclaim memory"
-        }
-    ],
     "innodb": [
         {
             "key": "innodb_buffer_pool_size",

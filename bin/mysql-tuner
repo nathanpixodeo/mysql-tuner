@@ -1,7 +1,25 @@
 #!/usr/bin/env php
 <?php
 
-require_once __DIR__ . '/../vendor/autoload.php';
+// Standalone clone and dependency-install layouts put the Composer autoloader
+// in different places, and modern Composer bin proxies tell us exactly where
+// it lives via $GLOBALS['_composer_autoload_path'] - trust that first.
+$autoloadFile = $GLOBALS['_composer_autoload_path'] ?? null;
+
+if ($autoloadFile === null) {
+    if (is_file(__DIR__ . '/../vendor/autoload.php')) {
+        $autoloadFile = __DIR__ . '/../vendor/autoload.php';
+    } elseif (is_file(__DIR__ . '/../../../autoload.php')) {
+        $autoloadFile = __DIR__ . '/../../../autoload.php';
+    }
+}
+
+if ($autoloadFile === null) {
+    fwrite(STDERR, "Error: Could not locate the Composer autoloader. Run `composer install`.\n");
+    exit(3); // EXIT_ERROR is not defined yet at this point in the file.
+}
+
+require_once $autoloadFile;
 
 use MySQLTuner\Analyzer;
 use MySQLTuner\Report\ConsoleFormatter;
@@ -12,56 +30,156 @@ const EXIT_OK = 0;
 const EXIT_WARNINGS = 1;
 const EXIT_CRITICAL = 2;
 const EXIT_ERROR = 3;
+const MYSQL_TUNER_VERSION = '1.0.1';
 
-$shortOpts = 'u:p:h:P:d:';
+$version = MYSQL_TUNER_VERSION;
+
+$shortOpts = 'u:p:h:P:d:V';
 $longOpts = [
     'user:', 'password:', 'host:', 'port:', 'socket:',
     'help', 'version', 'json', 'no-color', 'rules:',
+    'password-file:', 'password-stdin',
 ];
 
-$options = getopt($shortOpts, $longOpts);
+$usage = "Usage: mysql-tuner [options]\nTry 'mysql-tuner --help' for more information.\n";
+
+if ($argc <= 1) {
+    fwrite(STDERR, $usage);
+    exit(EXIT_ERROR);
+}
+
+$options = getopt($shortOpts, $longOpts, $optind);
+
+// getopt() silently drops options it does not recognise instead of failing,
+// so unknown flags have to be caught by walking argv ourselves.
+$knownLong = array_map(static fn (string $opt): string => rtrim($opt, ':'), $longOpts);
+$knownShort = array_filter(str_split($shortOpts), static fn (string $ch): bool => $ch !== ':');
+
+for ($i = 1; $i < $argc; $i++) {
+    $arg = $argv[$i];
+
+    if ($arg === '--') {
+        break;
+    }
+
+    if (str_starts_with($arg, '--')) {
+        $name = explode('=', substr($arg, 2), 2)[0];
+        if (!in_array($name, $knownLong, true)) {
+            fwrite(STDERR, "Error: Unknown option '--{$name}'\n" . $usage);
+            exit(EXIT_ERROR);
+        }
+    } elseif ($arg !== '-' && str_starts_with($arg, '-')) {
+        $flag = $arg[1];
+        if (!in_array($flag, $knownShort, true)) {
+            fwrite(STDERR, "Error: Unknown option '-{$flag}'\n" . $usage);
+            exit(EXIT_ERROR);
+        }
+    }
+}
+
+// $optind marks where getopt() stopped recognising options; anything left
+// after that is a stray positional argument the tool does not accept.
+if ($optind < $argc) {
+    fwrite(STDERR, "Error: Unexpected argument '{$argv[$optind]}'\n" . $usage);
+    exit(EXIT_ERROR);
+}
 
 if (isset($options['help'])) {
     echo <<<HELP
-MySQL Tuner - MySQL/MariaDB performance analyzer v1.0.0
+MySQL Tuner - MySQL/MariaDB performance analyzer v{$version}
 
 Usage: mysql-tuner [options]
 
 Options:
-  -u, --user <name>       MySQL user (default: root)
-  -p, --password <pass>   MySQL password
-  -h, --host <host>       MySQL host (default: 127.0.0.1)
-  -P, --port <port>       MySQL port (default: 3306)
-  -d, --socket <socket>   MySQL socket path (overrides host/port)
-  --json                  Output as JSON
-  --no-color              Disable colored output
-  --rules <dir>           Custom rules directory
-  --version               Show version
-  --help                  Show this help
+  -u, --user <name>            MySQL user (default: root)
+  -p, --password <pass>        MySQL password
+  --password-file <path>       Read password from a file
+  --password-stdin             Read password from stdin
+  -h, --host <host>            MySQL host (default: 127.0.0.1)
+  -P, --port <port>            MySQL port (default: 3306)
+  -d, --socket <socket>        MySQL socket path (overrides host/port)
+  --json                       Output as JSON
+  --no-color                   Disable colored output
+  --rules <dir>                Custom rules directory
+  -V, --version                Show version
+  --help                       Show this help
+
+Note: -h is bound to --host; there is no short flag for --help.
+
+Password precedence (highest first): --password-file, --password-stdin,
+the MYSQL_TUNER_PASSWORD environment variable, then -p/--password.
 
 Examples:
   mysql-tuner -u root -p secret
   mysql-tuner -u monitor -p pass -h db.example.com -P 3307
   mysql-tuner -u root -p secret --json | jq .
   mysql-tuner -d /var/run/mysqld/mysqld.sock
+  mysql-tuner -u root --password-stdin < password.txt
 
 HELP;
     exit(EXIT_OK);
 }
 
-if (isset($options['version'])) {
-    echo "MySQL Tuner v1.0.0\n";
+if (isset($options['version']) || isset($options['V'])) {
+    echo "MySQL Tuner v{$version}\n";
     exit(EXIT_OK);
 }
 
+// getopt() returns an array instead of a string when an option is repeated;
+// reject that up front rather than letting it fall into DSN string building.
+foreach (['u', 'user', 'p', 'password', 'h', 'host', 'P', 'port', 'd', 'socket', 'rules', 'password-file'] as $name) {
+    if (isset($options[$name]) && is_array($options[$name])) {
+        $flag = strlen($name) === 1 ? "-{$name}" : "--{$name}";
+        fwrite(STDERR, "Error: Option '{$flag}' may only be given once\n");
+        exit(EXIT_ERROR);
+    }
+}
+
 $user = $options['u'] ?? $options['user'] ?? 'root';
-$pass = $options['p'] ?? $options['password'] ?? '';
 $host = $options['h'] ?? $options['host'] ?? '127.0.0.1';
 $port = $options['P'] ?? $options['port'] ?? '3306';
 $socket = $options['d'] ?? $options['socket'] ?? null;
 $asJson = isset($options['json']);
 $noColor = isset($options['no-color']);
 $rulesDir = $options['rules'] ?? __DIR__ . '/../rules';
+
+if (!ctype_digit((string) $port) || (int) $port < 1 || (int) $port > 65535) {
+    fwrite(STDERR, "Error: --port must be an integer between 1 and 65535\n");
+    exit(EXIT_ERROR);
+}
+
+if ($socket !== null && !file_exists($socket)) {
+    fwrite(STDERR, "Error: Socket '{$socket}' does not exist\n");
+    exit(EXIT_ERROR);
+}
+
+if (str_contains($host, ';') || str_contains($host, '=')) {
+    fwrite(STDERR, "Error: --host must not contain ';' or '='\n");
+    exit(EXIT_ERROR);
+}
+
+// -p leaks into `ps auxww` and shell history, so prefer quieter channels
+// when they are available, in order of decreasing safety.
+$passwordFile = $options['password-file'] ?? null;
+$passwordStdin = isset($options['password-stdin']);
+$passwordOpt = $options['p'] ?? $options['password'] ?? null;
+$passwordEnv = getenv('MYSQL_TUNER_PASSWORD');
+
+if ($passwordFile !== null) {
+    $contents = @file_get_contents($passwordFile);
+    if ($contents === false) {
+        fwrite(STDERR, "Error: Cannot read password file '{$passwordFile}'\n");
+        exit(EXIT_ERROR);
+    }
+    $pass = rtrim($contents, "\r\n");
+} elseif ($passwordStdin) {
+    $line = fgets(STDIN);
+    $pass = $line === false ? '' : rtrim($line, "\r\n");
+} elseif ($passwordEnv !== false) {
+    $pass = $passwordEnv;
+} else {
+    $pass = $passwordOpt ?? '';
+}
 
 if ($socket !== null) {
     $dsn = "mysql:unix_socket={$socket};charset=utf8mb4";
@@ -74,6 +192,7 @@ try {
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES => false,
+        PDO::ATTR_TIMEOUT => 10,
     ]);
 } catch (PDOException $e) {
     fwrite(STDERR, "Error: Cannot connect to MySQL - {$e->getMessage()}\n");
@@ -82,8 +201,6 @@ try {
         fwrite(STDERR, "Hint: Check credentials (user: {$user})\n");
     } elseif (str_contains($e->getMessage(), 'Connection refused')) {
         fwrite(STDERR, "Hint: Is MySQL running on {$host}:{$port}?\n");
-    } elseif (str_contains($e->getMessage(), 'ext-pdo')) {
-        fwrite(STDERR, "Hint: Install php-mysql extension\n");
     }
 
     exit(EXIT_ERROR);
@@ -94,7 +211,9 @@ $analyzer = new Analyzer($pdo, $ruleSet);
 
 try {
     $report = $analyzer->analyze();
-} catch (PDOException $e) {
+} catch (Throwable $e) {
+    // Rule loading/evaluation can also throw JsonException, TypeError,
+    // ValueError or a plain Error - none of those deserve a stack trace.
     fwrite(STDERR, "Error during analysis: {$e->getMessage()}\n");
     exit(EXIT_ERROR);
 }

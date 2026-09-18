@@ -64,13 +64,13 @@ class SchemaCollector implements CollectorInterface
         return (int) $stmt->fetch(PDO::FETCH_COLUMN);
     }
 
-    private function getIndexSize(string $dbList): ?int
+    private function getIndexSize(string $dbList): int
     {
         $stmt = $this->pdo->query("SELECT COALESCE(SUM(index_length), 0) FROM information_schema.TABLES WHERE table_schema IN ({$dbList})");
         return (int) $stmt->fetch(PDO::FETCH_COLUMN);
     }
 
-    private function getDataSize(string $dbList): ?int
+    private function getDataSize(string $dbList): int
     {
         $stmt = $this->pdo->query("SELECT COALESCE(SUM(data_length + index_length), 0) FROM information_schema.TABLES WHERE table_schema IN ({$dbList})");
         return (int) $stmt->fetch(PDO::FETCH_COLUMN);

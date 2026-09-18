@@ -260,15 +260,6 @@
             "condition": "neq",
             "threshold": "ROW",
             "suggestion": "Use binlog_format=ROW for consistent replication"
-        },
-        {
-            "key": "expire_logs_days",
-            "type": "int",
-            "severity": "INFO",
-            "summary": "Binary log expiration period",
-            "condition": "lt",
-            "threshold": 7,
-            "suggestion": "Set expire_logs_days to at least 7 for safety"
         }
     ],
     "performance_schema": [

@@ -1,24 +1,6 @@
 {
     "security": [
         {
-            "key": "have_ssl",
-            "type": "string",
-            "severity": "INFO",
-            "summary": "SSL is not enabled for MySQL connections",
-            "condition": "neq",
-            "threshold": "YES",
-            "suggestion": "Configure SSL/TLS for encrypted connections"
-        },
-        {
-            "key": "validate_password_policy",
-            "type": "string",
-            "severity": "INFO",
-            "summary": "Password validation policy",
-            "condition": "eq",
-            "threshold": "LOW",
-            "suggestion": "Set validate_password_policy = MEDIUM or STRONG for better security"
-        },
-        {
             "key": "skip_name_resolve",
             "type": "string",
             "severity": "INFO",
@@ -44,15 +26,6 @@
             "condition": "neq",
             "threshold": "OFF",
             "suggestion": "Set local_infile = OFF unless you explicitly need LOAD DATA LOCAL INFILE"
-        },
-        {
-            "key": "old_passwords",
-            "type": "int",
-            "severity": "CRITICAL",
-            "summary": "Old password format is enabled — insecure",
-            "condition": "neq",
-            "threshold": 0,
-            "suggestion": "Upgrade to MySQL 8.0+ with caching_sha2_password or mysql_native_password"
         }
     ]
 }
