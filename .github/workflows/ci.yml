@@ -44,7 +44,7 @@ jobs:
         run: vendor/bin/phpstan analyse --no-progress --error-format=github
 
   tests:
-    runs-on: ${{ matrix.os || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
@@ -52,6 +52,10 @@ jobs:
         # No prefer-lowest leg: the only dependencies are PHPUnit and PHPStan,
         # both dev-only, so resolving them lower proves nothing about the library.
         php: ['8.2', '8.3', '8.4']
+        # `os` must be a real matrix key. If it only appeared under `include`,
+        # that entry would merge into the existing 8.3 combination and move it to
+        # Windows rather than adding a leg, silently losing Ubuntu 8.3 coverage.
+        os: [ubuntu-latest]
         include:
           - php: '8.3'
             os: windows-latest
