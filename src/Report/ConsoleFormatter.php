@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace MySQLTuner\Report;
 
 use MySQLTuner\Recommendation\Recommendation;
@@ -17,12 +19,19 @@ class ConsoleFormatter
         'DIM' => "\033[2m",
     ];
 
+    private const SECURITY_GROUP = 'security';
+
     private bool $useColors;
 
     public function __construct(
         private readonly bool $noColor = false,
     ) {
-        $this->useColors = !$noColor && PHP_SAPI === 'cli';
+        $this->useColors = !$noColor
+            && PHP_SAPI === 'cli'
+            // Honour the NO_COLOR convention, and do not write escape sequences into a file or a
+            // pipe: `mysql-tuner > report.txt` used to capture raw ANSI codes.
+            && getenv('NO_COLOR') === false
+            && (!function_exists('stream_isatty') || @stream_isatty(STDOUT));
     }
 
     public function format(Report $report): string
@@ -55,22 +64,39 @@ class ConsoleFormatter
         $lines[] = '';
 
         if ($report->systemMetrics !== []) {
+            $system = $report->systemMetrics;
+
             $lines[] = $this->section("System Information");
-            $lines[] = $this->kv('OS', $report->systemMetrics['os_type'] ?? 'N/A');
+            $lines[] = $this->kv('OS', is_string($system['os_type'] ?? null) ? $system['os_type'] : 'N/A');
 
-            if (isset($report->systemMetrics['total_memory'])) {
-                $totalMem = $report->systemMetrics['total_memory'];
-                $formatted = $this->formatBytes($totalMem);
-                $lines[] = $this->kv('Total Memory', $formatted);
+            if (($system['is_local'] ?? true) !== true) {
+                // Say so explicitly rather than quietly omitting the rows below, which would read
+                // as "this host has no memory worth reporting".
+                $lines[] = $this->kv('Host', 'remote - local system metrics not applicable');
             }
 
-            if (isset($report->systemMetrics['load_avg'])) {
-                $load = $report->systemMetrics['load_avg'];
-                $lines[] = $this->kv('Load Average', implode(', ', array_map(fn($v) => sprintf('%.2f', $v), $load)));
+            $totalMem = $system['total_memory'] ?? null;
+            if (is_int($totalMem)) {
+                $lines[] = $this->kv('Total Memory', $this->formatBytes($totalMem));
             }
 
-            if (isset($report->systemMetrics['cpu_cores'])) {
-                $lines[] = $this->kv('CPU Cores', (string) $report->systemMetrics['cpu_cores']);
+            $load = $system['load_avg'] ?? null;
+            if (is_array($load) && $load !== []) {
+                $lines[] = $this->kv('Load Average', implode(', ', array_map(
+                    static fn(mixed $v): string => sprintf('%.2f', is_numeric($v) ? (float) $v : 0.0),
+                    $load,
+                )));
+            }
+
+            $cores = $system['cpu_cores'] ?? null;
+            if (is_int($cores)) {
+                $lines[] = $this->kv('CPU Cores', (string) $cores);
+            }
+
+            $diskUsed = $system['disk_used_percent'] ?? null;
+            if (is_float($diskUsed)) {
+                $path = is_string($system['disk_path'] ?? null) ? $system['disk_path'] : '';
+                $lines[] = $this->kv('Disk Used', sprintf('%.1f%%%s', $diskUsed, $path === '' ? '' : " ({$path})"));
             }
 
             $lines[] = '';
@@ -83,6 +109,12 @@ class ConsoleFormatter
 
         $grouped = $report->grouped();
         foreach ($grouped as $group => $recs) {
+            // Already rendered above under "Security Issues". Without this skip every security
+            // finding was printed a second time here.
+            if ($group === self::SECURITY_GROUP) {
+                continue;
+            }
+
             $hasIssues = false;
             foreach ($recs as $rec) {
                 if ($rec->severity !== Severity::OK) {
@@ -113,7 +145,7 @@ class ConsoleFormatter
     /** @param list<string> &$lines */
     private function renderSecuritySection(Report $report, array &$lines): void
     {
-        $securityRecs = $report->byGroup('security');
+        $securityRecs = $report->byGroup(self::SECURITY_GROUP);
 
         if ($securityRecs === []) {
             return;

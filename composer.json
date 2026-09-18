@@ -1,11 +1,35 @@
 {
     "name": "nathanpixodeo/mysql-tuner",
-    "description": "MySQL / MariaDB performance analyzer and tuner – collects metrics and gives tuning recommendations",
+    "description": "Performance analyzer for MySQL and MariaDB: collects server metrics, applies version-aware tuning rules, and reports actionable recommendations with a health score.",
     "type": "library",
     "license": "MIT",
+    "keywords": [
+        "mysql",
+        "mariadb",
+        "performance",
+        "tuning",
+        "optimization",
+        "database",
+        "dba",
+        "monitoring",
+        "cli"
+    ],
+    "homepage": "https://github.com/nathanpixodeo/mysql-tuner",
+    "authors": [
+        {
+            "name": "Nathan Pixodeo",
+            "email": "nathan@pixodeo.net",
+            "role": "Developer"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/nathanpixodeo/mysql-tuner/issues",
+        "source": "https://github.com/nathanpixodeo/mysql-tuner"
+    },
     "require": {
-        "php": ">=8.1",
+        "php": ">=8.2",
         "ext-pdo": "*",
+        "ext-pdo_mysql": "*",
         "ext-json": "*"
     },
     "require-dev": {
@@ -17,10 +41,20 @@
             "MySQLTuner\\": "src/"
         }
     },
+    "autoload-dev": {
+        "psr-4": {
+            "MySQLTuner\\Tests\\": "tests/"
+        }
+    },
     "bin": [
         "bin/mysql-tuner"
     ],
+    "config": {
+        "sort-packages": true
+    },
     "scripts": {
-        "test": "phpunit"
+        "test": "phpunit",
+        "phpstan": "phpstan analyse",
+        "lint": "find src bin tests -type f \\( -name '*.php' -o -name 'mysql-tuner' \\) -print0 | xargs -0 -n1 -P4 php -l"
     }
 }

@@ -1,0 +1,19 @@
+# Normalise line endings in the repository. bin/mysql-tuner carries a shebang and is executed
+# directly on Unix, so a CRLF ending there would break it regardless of the contributor's platform.
+* text=auto eol=lf
+
+/bin/mysql-tuner    text eol=lf
+*.php               text eol=lf
+*.json              text eol=lf
+*.yml               text eol=lf
+*.neon              text eol=lf
+*.dist              text eol=lf
+*.md                text eol=lf
+
+# Keep development-only files out of the distributed package archive.
+/tests              export-ignore
+/.github            export-ignore
+/phpunit.xml.dist   export-ignore
+/phpstan.neon.dist  export-ignore
+/.gitignore         export-ignore
+/.gitattributes     export-ignore

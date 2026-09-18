@@ -1,86 +1,154 @@
 <?php
 
+declare(strict_types=1);
+
 namespace MySQLTuner\Collector;
 
-class SystemCollector implements CollectorInterface
+/**
+ * Host metrics for the machine running this process.
+ *
+ * These only describe the database server when the connection is local, so the caller must say so.
+ * Against a remote host the collector reports nothing rather than let the analyzer size a buffer
+ * pool from the operator's laptop.
+ */
+final class SystemCollector implements CollectorInterface
 {
+    public function __construct(
+        private readonly bool $isLocal = true,
+        private readonly string $procRoot = '/proc',
+        private readonly ?string $diskPath = null,
+    ) {}
+
     public function collect(): array
     {
+        if (!$this->isLocal) {
+            return [
+                'os_type' => PHP_OS_FAMILY,
+                'php_version' => PHP_VERSION,
+                'is_local' => false,
+            ];
+        }
+
+        $diskPath = $this->diskPath ?? sys_get_temp_dir();
+        [$diskTotal, $diskFree] = $this->getDiskSpace($diskPath);
+
         return [
             'os_type' => PHP_OS_FAMILY,
             'php_version' => PHP_VERSION,
+            'is_local' => true,
             'total_memory' => $this->getTotalMemory(),
             'available_memory' => $this->getAvailableMemory(),
             'load_avg' => $this->getLoadAvg(),
             'cpu_cores' => $this->getCpuCores(),
-            'disk_total' => $this->getDiskSpace('total'),
-            'disk_free' => $this->getDiskSpace('free'),
-            'disk_used_percent' => $this->getDiskUsedPercent(),
+            'disk_path' => $diskPath,
+            'disk_total' => $diskTotal,
+            'disk_free' => $diskFree,
+            'disk_used_percent' => $this->usedPercent($diskTotal, $diskFree),
         ];
     }
 
     private function getTotalMemory(): ?int
     {
-        if (PHP_OS_FAMILY === 'Linux' && file_exists('/proc/meminfo')) {
-            $content = file_get_contents('/proc/meminfo');
-            if (preg_match('/^MemTotal:\s+(\d+)\s+kB/m', $content, $m)) {
-                return (int) $m[1] * 1024;
-            }
-        }
-        return null;
+        return $this->readMemInfo('MemTotal');
     }
 
     private function getAvailableMemory(): ?int
     {
-        if (PHP_OS_FAMILY === 'Linux' && file_exists('/proc/meminfo')) {
-            $content = file_get_contents('/proc/meminfo');
-            if (preg_match('/^MemAvailable:\s+(\d+)\s+kB/m', $content, $m)) {
-                return (int) $m[1] * 1024;
-            }
+        return $this->readMemInfo('MemAvailable');
+    }
+
+    private function readMemInfo(string $field): ?int
+    {
+        $content = $this->readProc('meminfo');
+
+        if ($content === null) {
+            return null;
         }
+
+        if (preg_match('/^' . preg_quote($field, '/') . ':\s+(\d+)\s+kB/m', $content, $m) === 1) {
+            return (int) $m[1] * 1024;
+        }
+
         return null;
     }
 
-    /** @return array<float>|null */
     /** @return list<float>|null */
     private function getLoadAvg(): ?array
     {
-        if (PHP_OS_FAMILY === 'Linux' && file_exists('/proc/loadavg')) {
-            $parts = explode(' ', trim(file_get_contents('/proc/loadavg')));
-            return [(float) ($parts[0] ?? 0), (float) ($parts[1] ?? 0), (float) ($parts[2] ?? 0)];
+        $content = $this->readProc('loadavg');
+
+        if ($content === null) {
+            return null;
         }
-        return null;
+
+        $parts = preg_split('/\s+/', trim($content)) ?: [];
+
+        return [
+            (float) ($parts[0] ?? 0),
+            (float) ($parts[1] ?? 0),
+            (float) ($parts[2] ?? 0),
+        ];
     }
 
+    /**
+     * Physical/logical core count from /proc/cpuinfo.
+     *
+     * Counted with a multiline regex rather than substr_count on "\nprocessor": the first entry has
+     * no preceding newline, so that approach reported one core fewer than the machine has, and it
+     * also assumed a tab between the key and the colon.
+     */
     private function getCpuCores(): ?int
     {
-        if (PHP_OS_FAMILY === 'Linux' && file_exists('/proc/cpuinfo')) {
-            return substr_count(file_get_contents('/proc/cpuinfo'), "\nprocessor\t:");
+        $content = $this->readProc('cpuinfo');
+
+        if ($content === null) {
+            return null;
         }
 
-        $cores = (int) shell_exec('nproc 2>/dev/null');
-        return $cores > 0 ? $cores : null;
+        $count = preg_match_all('/^processor\s*:/mi', $content);
+
+        return is_int($count) && $count > 0 ? $count : null;
     }
 
-    private function getDiskSpace(string $type): ?float
+    private const DEFAULT_PROC_ROOT = '/proc';
+
+    private function readProc(string $file): ?string
     {
-        $path = sys_get_temp_dir();
+        // /proc is Linux-only. There is deliberately no shell fallback: the previous `nproc` call
+        // ran outside this guard, spawning a doomed cmd.exe on Windows on every single run.
+        // An explicitly supplied root is honoured anywhere, which is what makes the parsing
+        // testable on the platform this is often developed on.
+        if (PHP_OS_FAMILY !== 'Linux' && $this->procRoot === self::DEFAULT_PROC_ROOT) {
+            return null;
+        }
+
+        $path = $this->procRoot . '/' . $file;
+
+        if (!is_readable($path)) {
+            return null;
+        }
+
+        $content = @file_get_contents($path);
+
+        // file_exists does not imply readable: containers routinely mask parts of /proc.
+        return is_string($content) ? $content : null;
+    }
+
+    /** @return array{0: ?float, 1: ?float} */
+    private function getDiskSpace(string $path): array
+    {
         $total = @disk_total_space($path);
         $free = @disk_free_space($path);
 
-        return match ($type) {
-            'total' => $total ?: null,
-            'free' => $free ?: null,
-            default => null,
-        };
+        return [
+            is_float($total) && $total > 0 ? $total : null,
+            is_float($free) ? $free : null,
+        ];
     }
 
-    private function getDiskUsedPercent(): ?float
+    private function usedPercent(?float $total, ?float $free): ?float
     {
-        $total = $this->getDiskSpace('total');
-        $free = $this->getDiskSpace('free');
-
-        if ($total === null || $free === null || $total === 0.0) {
+        if ($total === null || $free === null || $total <= 0.0) {
             return null;
         }
 
@@ -98,6 +166,7 @@ class SystemCollector implements CollectorInterface
         if ($bytes >= 1024) {
             return sprintf('%.2fK', $bytes / 1024);
         }
+
         return "{$bytes}B";
     }
 }

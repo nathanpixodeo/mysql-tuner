@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace MySQLTuner\Report;
 
 use MySQLTuner\Recommendation\Recommendation;
@@ -7,7 +9,10 @@ use MySQLTuner\Recommendation\Severity;
 
 class Report
 {
-    /** @param list<Recommendation> $recommendations @param array<string, mixed> $systemMetrics */
+    /**
+     * @param list<Recommendation> $recommendations
+     * @param array<string, mixed> $systemMetrics
+     */
     public function __construct(
         public readonly array  $recommendations,
         public readonly string $version,

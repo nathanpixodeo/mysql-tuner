@@ -1,69 +1,145 @@
 <?php
 
+declare(strict_types=1);
+
 namespace MySQLTuner\Collector;
 
-use PDO;
+use MySQLTuner\Database\Exception\QueryFailed;
+use MySQLTuner\Database\QueryRunner;
 
-class MySQLCollector implements CollectorInterface
+final class MySQLCollector implements CollectorInterface
 {
+    /** @var array<string, string> metric => why it could not be answered */
+    private array $skipped = [];
+
     public function __construct(
-        private readonly PDO $pdo,
+        private readonly QueryRunner $runner,
     ) {}
 
     public function collect(): array
     {
-        $status = $this->fetch('SHOW /*!50000 GLOBAL */ STATUS');
-        $variables = $this->fetch('SHOW /*!50000 GLOBAL */ VARIABLES');
-        $slave = $this->tryFetch('SHOW SLAVE STATUS');
+        $this->skipped = [];
 
+        $status = $this->fetchVariables('SHOW /*!50000 GLOBAL */ STATUS');
+        $variables = $this->fetchVariables('SHOW /*!50000 GLOBAL */ VARIABLES');
+
+        // Status counters and configuration variables share one namespace here. They do not collide
+        // in practice (counters are capitalised, variables are not), but make the winner explicit.
         $metrics = [...$status, ...$variables];
 
-        if ($slave !== null && isset($slave[0])) {
-            $metrics['slave_status'] = $slave[0];
+        $replica = $this->collectReplicaStatus();
+        if ($replica !== null) {
+            $metrics['slave_status'] = $replica;
         }
 
-        $engineMetrics = $this->collectEngineMetrics();
-        $metrics = [...$metrics, ...$engineMetrics];
+        $metrics = [...$metrics, ...$this->collectEngineMetrics()];
+
+        // Always present, matching the other collectors, so callers never have to special-case
+        // its absence.
+        $metrics['checks_skipped'] = $this->skipped;
 
         return $metrics;
     }
 
     /** @return array<string, string> */
-    private function fetch(string $query): array
+    private function fetchVariables(string $sql): array
     {
-        $stmt = $this->pdo->query($query);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         $result = [];
-        foreach ($rows as $row) {
+
+        // Not guarded: without SHOW GLOBAL STATUS there is no report to produce, so a failure here
+        // should reach the caller rather than yield a confidently empty analysis.
+        foreach ($this->runner->fetchAll($sql) as $row) {
             $name = $row['Variable_name'] ?? $row['variable_name'] ?? '';
             $value = $row['Value'] ?? $row['value'] ?? '';
-            $result[$name] = $value;
+
+            if (is_string($name) && $name !== '') {
+                $result[$name] = is_scalar($value) ? (string) $value : '';
+            }
         }
+
         return $result;
     }
 
-    /** @return list<array<string, string|null>>|null */
-    private function tryFetch(string $query): ?array
+    /**
+     * Replication status, normalised across the naming change.
+     *
+     * MySQL 8.0.22 introduced SHOW REPLICA STATUS and 8.4 removed SHOW SLAVE STATUS entirely, while
+     * MariaDB still only offers the older spelling. Try the modern statement first and fall back,
+     * then normalise the columns so downstream code has one set of names to read.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function collectReplicaStatus(): ?array
     {
-        try {
-            $stmt = $this->pdo->query($query);
-            return $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (\PDOException) {
-            return null;
+        $lastFailure = null;
+
+        foreach (['SHOW REPLICA STATUS', 'SHOW SLAVE STATUS'] as $sql) {
+            try {
+                $row = $this->runner->fetchOne($sql);
+            } catch (QueryFailed $e) {
+                $lastFailure = $e;
+
+                continue;
+            }
+
+            // An empty result means the server is simply not a replica: not a failure.
+            if ($row === null) {
+                return null;
+            }
+
+            return $this->normaliseReplicaRow($row);
         }
+
+        if ($lastFailure !== null) {
+            $this->skipped['replication'] = 'could not read replica status: ' . $lastFailure->getMessage();
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function normaliseReplicaRow(array $row): array
+    {
+        $aliases = [
+            'Slave_IO_Running' => 'Replica_IO_Running',
+            'Slave_SQL_Running' => 'Replica_SQL_Running',
+            'Seconds_Behind_Master' => 'Seconds_Behind_Source',
+        ];
+
+        foreach ($aliases as $legacy => $modern) {
+            if (!array_key_exists($legacy, $row) && array_key_exists($modern, $row)) {
+                $row[$legacy] = $row[$modern];
+            }
+        }
+
+        return $row;
     }
 
     /** @return array<string, string> */
     private function collectEngineMetrics(): array
     {
         $engines = [];
+
         try {
-            $stmt = $this->pdo->query('SELECT ENGINE, SUPPORT FROM information_schema.ENGINES');
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-                $engines['engine_' . strtolower($row['ENGINE'])] = $row['SUPPORT'];
-            }
-        } catch (\PDOException) {
+            $rows = $this->runner->fetchAll('SELECT ENGINE, SUPPORT FROM information_schema.ENGINES');
+        } catch (QueryFailed $e) {
+            $this->skipped['engines'] = 'could not read information_schema.ENGINES: ' . $e->getMessage();
+
+            return [];
         }
+
+        foreach ($rows as $row) {
+            $engine = $row['ENGINE'] ?? null;
+            $support = $row['SUPPORT'] ?? null;
+
+            if (is_string($engine) && is_string($support)) {
+                $engines['engine_' . strtolower($engine)] = $support;
+            }
+        }
+
         return $engines;
     }
 }
