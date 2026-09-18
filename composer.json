@@ -26,6 +26,12 @@
         "issues": "https://github.com/nathanpixodeo/mysql-tuner/issues",
         "source": "https://github.com/nathanpixodeo/mysql-tuner"
     },
+    "funding": [
+        {
+            "type": "custom",
+            "url": "https://paypal.me/shivakira95"
+        }
+    ],
     "require": {
         "php": ">=8.2",
         "ext-pdo": "*",

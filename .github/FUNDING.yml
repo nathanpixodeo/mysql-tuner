@@ -1,0 +1,3 @@
+# GitHub renders a "Sponsor" button from this file. PayPal is not one of the
+# platforms GitHub supports natively, so it goes under `custom`.
+custom: ["https://paypal.me/shivakira95"]

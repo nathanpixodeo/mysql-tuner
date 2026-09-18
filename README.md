@@ -364,6 +364,15 @@ GitHub Actions runs on push/PR to `main`, in three jobs:
 - [ ] Performance schema integration
 - [ ] Prometheus/OpenMetrics exporter mode
 
+## Support the project
+
+If this tool saved you a debugging session, you can buy me a coffee:
+
+[![Donate via PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://paypal.me/shivakira95)
+
+Bug reports and pull requests are just as welcome — see
+[Issues](https://github.com/nathanpixodeo/mysql-tuner/issues).
+
 ## License
 
 MIT
